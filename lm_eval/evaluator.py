@@ -76,6 +76,7 @@ def simple_evaluate(
     fewshot_random_seed: int = 1234,
     confirm_run_unsafe_code: bool = False,
     metadata: Optional[dict] = None,
+    gender_debias: Optional[str] = False,
 ):
     """Instantiate and evaluate a model on a list of tasks.
 
@@ -229,6 +230,7 @@ def simple_evaluate(
                     "batch_size": batch_size,
                     "max_batch_size": max_batch_size,
                     "device": device,
+                    'gender_debias': gender_debias,
                 },
             )
     else:

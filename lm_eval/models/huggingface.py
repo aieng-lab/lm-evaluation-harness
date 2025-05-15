@@ -2,6 +2,7 @@ import copy
 import logging
 import os
 from datetime import timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -41,6 +42,55 @@ from lm_eval.models.utils import (
 
 
 eval_logger = logging.getLogger(__name__)
+
+
+class _SentenceDebiasModel:
+    def __init__(self, model_name_or_path, bias_direction):
+        bias_direction = torch.load(bias_direction)
+
+        def _hook(module, input_, output, bias_direction):
+            # Debias the last hidden state.
+            x = output["last_hidden_state"]
+
+            # Ensure that everything is on the same device.
+            bias_direction = bias_direction.to(x.device, dtype=x.dtype)
+
+            # Debias the representation.
+            for t in range(x.size(1)):
+                x[:, t] = x[:, t] - torch.ger(
+                    torch.matmul(x[:, t], bias_direction), bias_direction
+                ) / bias_direction.dot(bias_direction)
+
+            # Update the output.
+            output["last_hidden_state"] = x
+
+            return output
+
+        self.func = partial(_hook, bias_direction=bias_direction)
+
+
+
+class _INLPModel:
+    def __init__(self, model_name_or_path, projection_matrix):
+        projection_matrix = torch.load(projection_matrix)
+
+        def _hook(module, input_, output, projection_matrix):
+            # Debias the last hidden state.
+            x = output["last_hidden_state"]
+
+            # Ensure that everything is on the same device.
+            projection_matrix = projection_matrix.to(x.device, dtype=x.dtype)
+
+            for t in range(x.size(1)):
+                x[:, t] = torch.matmul(projection_matrix, x[:, t].T).T
+
+            # Update the output.
+            output["last_hidden_state"] = x
+
+            return output
+
+        self.func = partial(_hook, projection_matrix=projection_matrix)
+
 
 
 @register_model("hf-auto", "hf", "huggingface")
@@ -512,6 +562,7 @@ class HFLM(TemplateLM):
 
         if self.AUTO_MODEL_CLASS is None:
             if self.backend == "causal":
+
                 self.AUTO_MODEL_CLASS = transformers.AutoModelForCausalLM
             elif self.backend == "seq2seq":
                 self.AUTO_MODEL_CLASS = transformers.AutoModelForSeq2SeqLM
@@ -591,7 +642,59 @@ class HFLM(TemplateLM):
                             model_kwargs["bnb_4bit_compute_dtype"]
                         )
 
-            self._model = self.AUTO_MODEL_CLASS.from_pretrained(
+            gender_debias = kwargs.get('gender_debias', None)
+            if gender_debias == None:
+                model_class = self.AUTO_MODEL_CLASS
+                print(f'Using {self.AUTO_MODEL_CLASS} model')
+            elif any(x in gender_debias.lower() for x in {'projection', 'inlp', 'rlace', 'leace'}):
+                print(f'Using INLP gender debias model')
+                class INLPLlamaForCausalLM(_INLPModel):
+                    def __new__(self, model_name_or_path, **kwargs):
+                        super().__init__(self, model_name_or_path, gender_debias)
+                        model = transformers.AutoModelForCausalLM.from_pretrained(model_name_or_path, **kwargs)
+                        model.model.register_forward_hook(self.func)
+                        return model
+
+                    @classmethod
+                    def from_pretrained(cls, model_name_or_path, **kwargs):
+                        # Remove keys that may break LlamaForCausalLM init
+                        safe_kwargs = {k: v for k, v in kwargs.items() if k != "revision"}
+
+                        # Call the __new__ method to create an instance
+                        instance = cls.__new__(cls, model_name_or_path, **safe_kwargs)
+                        # Initialize the instance
+                    #instance.__init__(model_name_or_path, **safe_kwargs)
+                        return instance
+
+                model_class = INLPLlamaForCausalLM
+            elif 'subspace' in gender_debias.lower():
+                print(f'Using SentenceDebias gender debias model')
+                class SentenceDebiasLlamaForCausalLM(_SentenceDebiasModel):
+                    def __new__(self, model_name_or_path, **kwargs):
+                        super().__init__(self, model_name_or_path, gender_debias)
+                        model = transformers.AutoModelForCausalLM.from_pretrained(model_name_or_path, **kwargs)
+                        model.model.register_forward_hook(self.func)
+
+                        return model
+
+                    @classmethod
+                    def from_pretrained(cls, model_name_or_path, **kwargs):
+                        safe_kwargs = {k: v for k, v in kwargs.items() if k != "revision"}
+                        # Call the __new__ method to create an instance
+                        instance = cls.__new__(cls, model_name_or_path, **safe_kwargs)
+                        # Initialize the instance
+                        #instance.__init__(model_name_or_path, **kwargs)
+                        return instance
+
+                model_class = SentenceDebiasLlamaForCausalLM
+
+            else:
+                raise ValueError(f'Invalid gender_debias:', gender_debias)
+
+            if 'gender_debias' in model_kwargs:
+                del model_kwargs['gender_debias']
+
+            self._model = model_class.from_pretrained(
                 pretrained,
                 revision=revision,
                 torch_dtype=get_dtype(dtype),
