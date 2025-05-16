@@ -1,6 +1,10 @@
-# Language Model Evaluation Harness
+# Language Model Evaluation Harness For Gender-Debiasing
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10256836.svg)](https://doi.org/10.5281/zenodo.10256836)
+[![arXiv](https://img.shields.io/badge/arXiv-2502.01406-blue.svg)](https://arxiv.org/abs/2502.01406)
+
+Compared to the [original library](https://github.com/EleutherAI/lm-evaluation-harness), our fork supports the evaluation of gender-debiased models that include post-processing of the model outputs/hidden states, such as [INLP](), [RLACE](), [LEACE](), and [SentenceDebias](). 
+The provided code for these debiasing approaches is based on [aieng-lab/bias-bench](https://github.com/aieng-lab/lm-evaluation-harness). There, you can find more information regarding expected usage of the gender debiased models and how to train the debiasing representations.
 
 ---
 
@@ -611,6 +615,20 @@ Extras dependencies can be installed via `pip install -e ".[NAME]"`
 
 ## Cite as
 
+### This fork:
+```bibtex
+ @misc{drechsel2025gradiendmonosemanticfeaturelearning,
+      title={{GRADIEND}: Monosemantic Feature Learning within Neural Networks Applied to Gender Debiasing of Transformer Models}, 
+      author={Jonathan Drechsel and Steffen Herbold},
+      year={2025},
+      eprint={2502.01406},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2502.01406}, 
+}
+```
+
+### Original library:
 ```text
 @misc{eval-harness,
   author       = {Gao, Leo and Tow, Jonathan and Abbasi, Baber and Biderman, Stella and Black, Sid and DiPofi, Anthony and Foster, Charles and Golding, Laurence and Hsu, Jeffrey and Le Noac'h, Alain and Li, Haonan and McDonell, Kyle and Muennighoff, Niklas and Ociepa, Chris and Phang, Jason and Reynolds, Laria and Schoelkopf, Hailey and Skowron, Aviya and Sutawika, Lintang and Tang, Eric and Thite, Anish and Wang, Ben and Wang, Kevin and Zou, Andy},
